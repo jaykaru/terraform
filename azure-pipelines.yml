@@ -1,0 +1,79 @@
+trigger: none
+
+stages:
+- stage: 'TerraformConfiguration'
+  dependsOn: []
+  displayName: 'Configure App service Plan and App service'
+  jobs:
+  - job: 
+    displayName: 'Configure App service'
+    pool:
+      vmImage: 'vs2017-win2016'
+
+    variables:
+    - group: TerraformConfiguration
+
+    steps:
+    - task: AzureCLI@2
+      displayName: 'Azure CLI to deploy required Azure resources'
+      inputs:
+        azureSubscription: 'Visual Studio Professional(5cdcf468-541b-451f-b6a1-25823b72fac9)'
+        scriptType: 'batch'
+        scriptLocation: 'inlineScript'
+        inlineScript: |
+          call az group create --location westeurope --name $(terraformstoragerg)          
+          call az storage account create --name $(terraformstorageaccount) --resource-group $(terraformstoragerg) --location westeurope --sku Standard_LRS
+          call az storage container create --name terraform --account-name $(terraformstorageaccount)
+          call az storage account keys list -g $(terraformstoragerg) -n $(terraformstorageaccount)
+    
+    - task: AzurePowerShell@3
+      inputs:
+        azureSubscription: 'Visual Studio Professional(5cdcf468-541b-451f-b6a1-25823b72fac9)'
+        ScriptType: 'InlineScript'
+        Inline: |
+          $key=(Get-AzureRmStorageAccountKey -ResourceGroupName $(terraformstoragerg) -AccountName $(terraformstorageaccount)).Value[0]
+           Write-Host "##vso[task.setvariable variable=storagekey]$key"
+        azurePowerShellVersion: 'LatestVersion'
+    
+    - task: qetza.replacetokens.replacetokens-task.replacetokens@3
+      displayName: 'Replace tokens in terraform file'
+      inputs:
+        targetFiles: '**/*.tf'
+        escapeType: none
+        tokenPrefix: '__'
+        tokenSuffix: '__'
+    
+    - task: 11645770-d18e-11e8-8f5b-1b8b62612b3b@0
+      inputs:
+        terraformVersion: '0.12.24'
+
+    - task: TerraformTaskV1@0
+      inputs:
+        provider: 'azurerm'
+        command: 'init'
+        workingDirectory: '$(System.DefaultWorkingDirectory)/Terraform'
+        backendServiceArm: 'Visual Studio Professional(5cdcf468-541b-451f-b6a1-25823b72fac9)'
+        backendAzureRmResourceGroupName: '$(terraformstoragerg)'
+        backendAzureRmStorageAccountName: '$(terraformstorageaccount)'
+        backendAzureRmContainerName: 'terraform'
+        backendAzureRmKey: 'terraform.tfstate'
+
+    - task: TerraformTaskV1@0
+      inputs:
+        provider: 'azurerm'
+        command: 'plan'
+        workingDirectory: '$(System.DefaultWorkingDirectory)/Terraform'
+        commandOptions: '-out="$(System.DefaultWorkingDirectory)/out.plan'
+        environmentServiceNameAzureRM: 'Visual Studio Professional(5cdcf468-541b-451f-b6a1-25823b72fac9)'
+
+
+    - task: ms-devlabs.custom-terraform-tasks.custom-terraform-release-task.TerraformTaskV1@0
+      displayName: 'Terraform : azurerm'
+      inputs:
+        command: apply
+        environmentServiceNameAzureRM: TerraformAppServiceDeployDevTestProd
+        workingDirectory: '$(System.DefaultWorkingDirectory)/Terraform'
+        #TerraformAppServiceDeployDevTestProd
+        
+
+     

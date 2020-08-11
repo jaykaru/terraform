@@ -1,0 +1,37 @@
+trigger: none
+parameters:
+- name: InstanceCount
+  displayName: InstanceCount
+  type: number
+  default: 2
+  values:
+  - 2
+  - 4
+  - 6
+stages:
+- stage: 'VMScaleSetAgentDeploy'
+  dependsOn: []
+  displayName: 'Deploy VM Scaleset Agents'
+  jobs:
+  - deployment: 
+    displayName: 'Deploy VM Scaleset Agents'
+    pool:
+      vmImage: 'ubuntu-latest'
+    environment: 'ProductionVMScaleSet'
+    variables:
+    - group: VMScaleSetAgentConfig
+    strategy: 
+      runOnce:
+        deploy: 
+          steps:
+
+          - task: AzureCLI@2
+            displayName: 'Azure CLI'
+            inputs:
+              azureSubscription: TerraformAppServiceDeployDevTestProd
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                az group create --location $(Location) --name $(VMSSResourceGroup)
+                az vmss create --name $(VMAgentPoolName) --resource-group $(VMSSResourceGroup)  --image UbuntuLTS --vm-sku $(VM-SKU) --storage-sku $(Storage-SKU) --authentication-type SSH --generate-ssh-keys --instance-count ${{ parameters.InstanceCount }}  --disable-overprovision --upgrade-policy-mode $(Upgrade-Policy-Mode) --single-placement-group false --platform-fault-domain-count 1 --load-balancer "" --ephemeral-os-disk true --os-disk-caching readonly
+            
